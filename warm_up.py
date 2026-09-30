@@ -5,12 +5,12 @@ from matplotlib import pyplot as plt
 rng = np.random.default_rng()
 
 # %%
-# help(plt.vlines)
+help(plt.hist)
 # %%
-N = 1000000
+N = 10000
 pi_estimates = []
 
-for i in range(1000):
+for i in range(10000):
     # make arrays of N pairs of random numbers
     points_x, points_y = rng.uniform(0, 1, size=(2, N))
 
@@ -22,7 +22,9 @@ for i in range(1000):
 pi_estimates = np.array(pi_estimates)
 
 # %%
-plt.hist(pi_estimates)
-plt.vlines(np.pi)
+bins, counts = np.histogram(pi_estimates)
+plt.stairs(counts, bins, fill=True)
+
+plt.axvline(np.pi, color="red")
 plt.show()
 # %%
