@@ -2,16 +2,20 @@
 # import modules and set up random number generator
 import numpy as np
 from matplotlib import pyplot as plt
+
+# rng = np.random.default_rng(seed=1925347)
+# generator is seeded to make results reproducible
 rng = np.random.default_rng()
 
 # %%
-help(plt.hist)
+help(np.cumsum)
 # %%
+# generate random data and count how many are inside
 N = 10000
 pi_estimates = []
 
-for i in range(10000):
-    # make arrays of N pairs of random numbers
+for i in range(100000):
+    # make arrays of N of random numbers
     points_x, points_y = rng.uniform(0, 1, size=(2, N))
 
     # check how many are within the circle
@@ -22,9 +26,15 @@ for i in range(10000):
 pi_estimates = np.array(pi_estimates)
 
 # %%
-bins, counts = np.histogram(pi_estimates)
-plt.stairs(counts, bins, fill=True)
-
-plt.axvline(np.pi, color="red")
+# sort the data into equal size bins
+bins_n = 50
+counts, edges = np.histogram(pi_estimates, bins=bins_n, density=False)
+# %%
+# plot the data
+print(bins_n)
+plt.stairs(counts, edges, fill=True)
+plt.axvline(np.pi, color="red", label="$\\pi$")
+plt.legend()
 plt.show()
+# introduces binning artefacts
 # %%
