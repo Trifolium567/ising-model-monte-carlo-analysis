@@ -9,7 +9,7 @@ from matplotlib import pyplot as plt
 rng = np.random.default_rng()
 # %%
 # generate random data and count how many are inside
-n = 100000
+n = 1000
 pi_estimates = pl.Series("pi_estimates", dtype=pl.Float64)
 
 for i in range(50):  # chunking makes it run faster
@@ -75,7 +75,7 @@ plt.scatter(x, dy/dx, marker=".")
 plt.show()
 
  # %%
-np.savetxt("hundred-thousand-x-million.txt", pi_estimates)
+np.savetxt("placeholder.txt", pi_estimates)
 # %%
 plt.scatter(values, frequencies, marker=".")
 plt.show()
