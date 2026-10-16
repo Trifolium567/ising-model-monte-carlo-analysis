@@ -7,7 +7,6 @@ from matplotlib import pyplot as plt
 
 rng = np.random.default_rng(seed=1925347)
 # generator is seeded to make results reproducible
-# rng = np.random.default_rng()
 # %%
 # generate random data and count how many are inside
 n = 1000
@@ -33,8 +32,6 @@ pi_estimates.describe()
 # %%
 # sort the data into equal size bins (histogram)
 bins_n = 100
-# pi_estimates = np.array(pi_estimates)
-# counts, edges = np.histogram(pi_estimates, bins=bins_n, density=False)
 hist_ = pi_estimates.hist(bin_count=bins_n, include_breakpoint=True)
 # find start edge
 start_edge = 2*hist_[0, "breakpoint"] - hist_[1, "breakpoint"]
@@ -54,10 +51,6 @@ plt.show()
 
 # histograms introduce binning artefacts so try cumulative
 # distribution function
-# pi_estimates = pi_estimates.sort()
-# counts = np.arange(1, pi_estimates.shape[0] + 1)
-# edges_cdf = pl.Series(pi_estimates)  # copy the Series
-
 values, frequencies = pi_estimates.value_counts(parallel=True).sort(by="pi_estimates")
 counts_cdf = frequencies.cum_sum()
 
@@ -100,6 +93,9 @@ pdf_y[0]
 popt, pcov = sp.optimize.curve_fit(normaldist, pdf_x, pdf_y, p0=[0.025, np.pi])
 
 sigma_squared_pdf, mean_pdf = popt
+plt.title("'Derivative' of Cumulative Distribution Function \n fit to normal distribution function")
+plt.xlabel("estimate of $\\mathrm{\\pi}$")
+plt.ylabel("probability density")
 plt.scatter(pdf_x, pdf_y, marker=".", color="red", label="data")
 plt.plot(pdf_x, normaldist(pdf_x, sigma_squared_pdf, mean_pdf), label="fit")
 plt.legend()
@@ -130,6 +126,9 @@ print(f"variance = {sigma_squared_cdf}")
 print(f"standard deviation = {sigma_cdf}")
 print(f"mean = {mean_cdf}")
 
+plt.title("Cumulative Distribution Function \n fit to normal cumulative distribution function")
+plt.xlabel("estimate of $\\mathrm{\\pi}$")
+plt.ylabel("cumulative probability density")
 plt.scatter(cdf_x, cdf_y, marker=".", color="red", label="data")
 plt.plot(cdf_x, sp.stats.norm.cdf((cdf_x - mean_cdf)/sigma_cdf), label="fit")
 plt.legend()
