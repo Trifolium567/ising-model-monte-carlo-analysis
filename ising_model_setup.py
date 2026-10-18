@@ -1,18 +1,9 @@
-# %%
 import numpy as np
 
-rng = np.random.default_rng(1925347)
-
-# %%
+# rng = np.random.default_rng(1925347)
 # create array to represent the system
 # -1 to represent spin down, 1 to represent spin-up
 
-num_particles = 1000000
-# system = np.full(num_particles, False)  # start with zeros
-system_1_d = rng.choice([-1, 1], size=num_particles)  # random samples
-
-
-# calculate the energy of the system
 def calculate_energy(system):
     """Return the energy of an n-d `system`
     
@@ -44,7 +35,7 @@ def calculate_energy(system):
     ndim = system.ndim
     energy = 0
     for i in range(ndim):
-        cond_array_1 = np.full(system_shape[i], True, dtype=np.int_)
+        cond_array_1 = np.full(system_shape[i], True)
         cond_array_1[0] = False
         cond_array_2 = cond_array_1[::-1]
         energy += np.tensordot(system.compress(cond_array_1, axis=i), system.compress(cond_array_2, axis=i), axes=ndim)
@@ -89,9 +80,9 @@ def metropolis(system, temperature, rng):
     Returns
     -------
     Delta_E: numpy.ndarray
-        The change in energies of the 
+        The change in energies of the alteration in terms of
+        the bond strengh, J.
     """
-
     # generalise for an n-d system
     system_shape = system.shape
     ndim = system.ndim
@@ -124,6 +115,3 @@ def metropolis(system, temperature, rng):
             system[*index] *= -1
             return Delta_E
         # else, (if Delta_E = 0) then loop again
-
-
-# %%
