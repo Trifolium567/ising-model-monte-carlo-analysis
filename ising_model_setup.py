@@ -1,8 +1,24 @@
 import numpy as np
+import scipy as sp
+
 
 # rng = np.random.default_rng(1925347)
 # create array to represent the system
 # -1 to represent spin down, 1 to represent spin-up
+def initialise_system(dim, size, rng):
+    """Create a 'hypercube' of spins of dimension `dim`
+    and of edge length `size` and return it as a `numpy.ndarray`
+    of dtype `np.int_`. It uses the provided
+    `numpy.random.Generator` object `rng` to generate the
+    system. The system will be randomised to be of roughly
+    equal spin-up (1) and spin-down (-1).
+    """
+    shape = np.full(dim, size, dtype=np.int_)
+    return rng.choice([-1, 1], size=shape)
+
+def pbc(i, shape):
+    """Returns the index, `i`, modulo the shape of the system, `shape`. This applies periodic boundary conditions."""
+    return np.mod(i, shape)
 
 def calculate_energy(system):
     """Return the energy of an n-d `system`
@@ -95,23 +111,19 @@ def metropolis(system, temperature, rng):
         _ = np.zeros(ndim, dtype=np.int8)
         for i in range(ndim):
             _[i] = 1
-            try: Delta_E += system[(*(index + _),)]
-            except IndexError: pass
-            if index[i] != 0:
-                Delta_E += system[(*(index - _),)]
+            Delta_E += system[(*pbc(index + _, system_shape),)]
+            Delta_E += system[(*pbc(index - _, system_shape),)]
             _[i] = 0
 
         # calculate the sum of the energies that the chosen particle will influence
         Delta_E *= system[(*index,)]
-        if Delta_E > 0:  # if Delta_E greater than zero, flip will decrease energy,
-                         # so accept
+
+        # if Delta_E greater than zero, flip will decrease energy,
+        # so accept
+        # if Delta_E is less than zero, flip will increase energy, so
+        # accept with a certain probability
+        if Delta_E > 0 or Delta_E < 0 and rng.random() >= np.exp(2*Delta_E/temperature):  
             Delta_E *= -2
             system[*index] *= -1
             return Delta_E
-        elif Delta_E < 0 and rng.random() >= np.exp(2*Delta_E/temperature):
-            # if Delta_E is less than zero, flip will increase energy, so
-            # accept with a certain probability
-            Delta_E *=-2
-            system[*index] *= -1
-            return Delta_E
-        # else, (if Delta_E = 0) then loop again
+        # if Delta_E = 0 then loop again
