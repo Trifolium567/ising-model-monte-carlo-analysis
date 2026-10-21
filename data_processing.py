@@ -6,17 +6,31 @@ from matplotlib import pyplot as plt
 
 
 # %%
-def normaldist(x: float, variance: float, mu: float):
+def normaldist(x, variance, mu):
     """Function that reuturns the normal distribution with syntax for `polars.Series` objects
     
     Returns the result of the pdf of the normal distribution
     with a mean `mu` and variance `variance`. This function uses
     syntax for polars arrays. It returns the probability density
-    of a normal distribution."""
+    of a normal distribution.
+    
+    Parameters
+    ----------
+    x : float | array_like
+        The indepenedent variable that is normally distributed
+    variance : float
+        The variance of the normal distribution
+    mu : float
+        The mean of the normal distribution
+    
+    Returns
+    -------
+    The probability density of `x`
+    """
     return 1 / np.sqrt(2*np.pi*variance) * np.exp(-np.power((x-mu), 2)/(2*variance))
 
 
-def histogram_ish(data: pl.Series, density : bool = True):
+def histogram_ish(data, density=True):
     """Function that returns data points which can be fitted the same way a histogram can.
     
     Returns the 'derivative' of the cumulative sum or the
@@ -31,23 +45,25 @@ def histogram_ish(data: pl.Series, density : bool = True):
     Parameters
     ----------
     data : array_like
-        Data, in the form of a polars Series.
+        Data, in an array-like object
     density : bool
         if `density=True`, the function will 'differentiate' the cumulative distribution function
         (instead of the cumulative sum function). `density` is set to True by default
     
     Returns
     -------
-    hist_x : the unique values in the `data` array
-    hist_y : equivalent to the frequency or density in a histogram
+    hist_x : polars.Series
+        the unique values in the `data` array
+    hist_y : polars.Series
+        equivalent to the frequency or density in a histogram
     """
-    name = data.name
-    values, cumulative_sum = data.value_counts().sort(by=name)
+    data = pl.Series(data)
+    values, cumulative_sum = data.value_counts().sort(by="")
     
     cumulative_sum = cumulative_sum.cum_sum()
     
     if density: cumulative_sum /= data.describe()["value"][0]  # divide cum_sum_y by number of data points
-                                                          # if density = True
+                                                               # if density = True
     dx = values.diff()[1:]
     dy = cumulative_sum.diff()[1:]
 
@@ -56,7 +72,7 @@ def histogram_ish(data: pl.Series, density : bool = True):
 
     return hist_x, hist_y
 
-def fit_normal(x_data, y_data, start_var: float, start_mu: float, plot : bool = False):
+def fit_normal(x_data, y_data, start_var, start_mu, plot=False):
     """Fit `data` to a normal probability density function.
 
     This fits given probability density `data` to the normal
@@ -91,7 +107,7 @@ def fit_normal(x_data, y_data, start_var: float, start_mu: float, plot : bool = 
     If `plot` is set to `True`, return:
         `variance, mu, covariance, ndarray[fig, ax]`
         
-        where ndarray[fig, ax] is a numpy array of the 
+        where `ndarray[fig, ax]` is a numpy array of the 
         `matplotlib.figure.Figure` and `matplotlib.axes._axes.Axes`
         objects that make the plot.
     """
@@ -109,10 +125,4 @@ def fit_normal(x_data, y_data, start_var: float, start_mu: float, plot : bool = 
         return variance, mu, pcov, np.array([fig, ax])
     # else:
     return variance, mu, pcov
-
-if __name__ == "__main__":
-    pass
-
-
-
 # %%
