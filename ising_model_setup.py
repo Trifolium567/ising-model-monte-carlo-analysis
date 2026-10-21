@@ -1,5 +1,4 @@
 import numpy as np
-import scipy as sp
 
 
 # rng = np.random.default_rng(1925347)
@@ -15,15 +14,17 @@ def initialise_system(dim, size, rng):
     """
     shape = np.full(dim, size, dtype=np.int_)
     return rng.choice([-1, 1], size=shape)
+    # return np.full(shape, 1)
 
 def pbc(i, shape):
-    """Returns the index, `i`, modulo the shape of the system, `shape`. This applies periodic boundary conditions."""
+    """Returns the index, `i`, modulo the shape of the system, `shape`.
+    This applies periodic boundary conditions."""
     return np.mod(i, shape)
 
 def calculate_energy(system):
     """Return the energy of an n-d `system`
     
-    Return the energy of an n-d system using the Ising Model,
+    Return the energy of an n-d `system` using the Ising Model,
     which assumes that the energy is the sum of the product
     of the spins of the nearest neighbours of each particle. 
     (multiplied by J, the bond strength, but that is not
@@ -33,6 +34,8 @@ def calculate_energy(system):
     Functionally, it returns the sum of the products of the
     unique combinations of the spins of the nearest neighbours
     of each particle and itself.
+
+    Periodic boundary conditions are applied.
 
     Parameters
     ----------
@@ -47,15 +50,36 @@ def calculate_energy(system):
         bond strength
 
     """
-    system_shape = system.shape
     ndim = system.ndim
     energy = 0
+    if ndim == 1:
+        energy = np.dot(np.roll(system, 1), system)
+    else:
+        for i in range(ndim):
+            energy += np.tensordot(np.roll(system, 1, axis=i), system)
+    return energy * -1
+
+def check_energy(system, index):
+    """Checks the energies that are influenced by the spin
+    state that is at `index` in `system` using the Ising Model
+    Hamiltonian. `index` must be a `numpy.ndarray` object"""
+    ndim = system.ndim
+    system_shape = system.shape
+    Delta_E = 0  # This variable will not be used as Delta_E first,
+                 # it will be used to calculate the energies that
+                 # the chosen particle will influence
+    _ = np.zeros(ndim, dtype=np.int8)
     for i in range(ndim):
-        cond_array_1 = np.full(system_shape[i], True)
-        cond_array_1[0] = False
-        cond_array_2 = cond_array_1[::-1]
-        energy += np.tensordot(system.compress(cond_array_1, axis=i), system.compress(cond_array_2, axis=i), axes=ndim)
-    return energy
+        _[i] = 1
+        Delta_E += system[*pbc(index + _, system_shape)]
+        Delta_E += system[*pbc(index - _, system_shape)]
+        _[i] = 0
+
+    # calculate the sum of the energies that the chosen particle will influence
+    Delta_E *= system[*index]
+    Delta_E *= -1
+    return Delta_E
+
 
 def metropolis(system, temperature, rng):
     """Perform one iteration of the Metropolis Algorithm.
@@ -76,7 +100,7 @@ def metropolis(system, temperature, rng):
     
     This function will:
         -   will not make an alteration that keeps the energy the same
-        -   flip one 'spin' in `system`
+        -   flip one 'spin' in `system` in place
         -   return the change in energy due to that change
     
     Parameters
@@ -95,35 +119,118 @@ def metropolis(system, temperature, rng):
 
     Returns
     -------
-    Delta_E: numpy.ndarray
+    Delta_E, change_in_spin
+
+    Delta_E: int
         The change in energies of the alteration in terms of
         the bond strengh, J.
+    change_in_spin: int
+        The change in spin of the system.
     """
     # generalise for an n-d system
     system_shape = system.shape
-    ndim = system.ndim
-    
+
+    # n_loops=1
     while True:
         index = rng.integers(system_shape, dtype=np.int_)
-        Delta_E = 0  # This variable will not be used as Delta_E first,
-                     # it will be used to calculate the energies that
-                     # the chosen particle will influence
-        _ = np.zeros(ndim, dtype=np.int8)
-        for i in range(ndim):
-            _[i] = 1
-            Delta_E += system[(*pbc(index + _, system_shape),)]
-            Delta_E += system[(*pbc(index - _, system_shape),)]
-            _[i] = 0
 
-        # calculate the sum of the energies that the chosen particle will influence
-        Delta_E *= system[(*index,)]
-
+        Delta_E = check_energy(system, index)
         # if Delta_E greater than zero, flip will decrease energy,
         # so accept
         # if Delta_E is less than zero, flip will increase energy, so
         # accept with a certain probability
-        if Delta_E > 0 or Delta_E < 0 and rng.random() >= np.exp(2*Delta_E/temperature):  
+        prob_accept =  np.exp(2*Delta_E/temperature)
+        if Delta_E > 0 \
+            or (Delta_E < 0 and rng.random() <= prob_accept):  # if it gets to looping 100000 times, just accept the alteration
             Delta_E *= -2
             system[*index] *= -1
-            return Delta_E
-        # if Delta_E = 0 then loop again
+            # change_in_spin = system[*index] * 2 
+            return Delta_E, system[*index] * 2
+        # n_loops+=1
+        # if Delta_E = 0 then loop agai
+
+def metropolis_checkall(system, temperature, rng, level_of_patience=3):
+    """Perform one iteration of a modified Metropolis Algorithm.
+    
+
+    This algorithm is designed to increase the acceptance rate of
+    the Metropolis algorithm by getting forcing acceptance past a
+    point. Instead of choosing a random index via the normal
+    distribution, it shuffles an array containing the indexes of
+    all the values in the system and iterates through that
+    `level_of_patience` times before then forcing an alteration,
+    including one that doesn't change the energy. This way, it
+    gets to equilibrium faster.
+
+    This function will:
+        -   flip one 'spin' in `system` in place
+        -   return the change in energy due to that change
+    
+    Parameters
+    ----------
+    system : numpy.ndarray
+        The system over which the algorithm is performed.
+        It should be represented in an n-d array with
+        `1` representing spin-up and `-1` representing
+        spin-down
+    temperature : float
+        The temperature at which the system is in terms
+        of the bond strength, J
+    rng: numpy.random.Generator
+        The Generator object to use to implement the
+        probability aspect of the Metropolis Algorithm
+    level_of_patience : int
+        The number of times the function goes through
+        the whole system before forcing an alteration.
+        
+    Returns
+    -------
+    Delta_E, change_in_spin
+
+    Delta_E: int
+        The change in energies of the alteration in terms of
+        the bond strengh, J.
+    change_in_spin: int
+        The change in spin of the system.
+    
+    See also
+    --------
+    metropolis : the original algorithm that was modified
+    """
+    system_shape = system.shape
+    index_array = np.array([i for i in np.ndindex(system_shape)])
+    rng.shuffle(index_array)
+    # this allows knowing that the whole system has been checked
+    # and that no points are checked twice
+    isupindex_not_saved = True
+    for i in range(3):
+        for index in index_array:
+            Delta_E = check_energy(system, index)
+            prob_accept =  np.exp(2*Delta_E/temperature)
+            # if Delta_E < 0 and isupindex_not_saved:
+            #     print("first up: ", index)
+            
+            if Delta_E > 0 \
+                or (Delta_E < 0 and rng.random() <= prob_accept):
+                Delta_E *= -2
+                system[*index] *= -1
+                # change_in_spin = system[*index] * 2 
+                return Delta_E, system[*index] * 2
+            elif isupindex_not_saved and Delta_E <= 0:  # save index of last one that would go up
+                # print(isupindex_not_saved)
+                # print(Delta_E)
+                upindex = index.copy()
+                # print(upindex)
+                isupindex_not_saved = False
+    # print(tuple(index) == tuple(upindex))
+    # if nothing happened, system is stuck in local minimum.
+    # The only thing that can be done is flip an a state up
+    # such that it increases in energy (or does not change it)
+        
+    # flip the first one that would increase energy
+    # (or keep it the same)
+    Delta_E = check_energy(system, upindex)
+    Delta_E *= -2
+    system[*upindex] *= -1
+    # change_in_spin = system[*index] * 2 
+    return Delta_E, system[*upindex] * 2
