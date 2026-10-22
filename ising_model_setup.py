@@ -4,15 +4,15 @@ import numpy as np
 # rng = np.random.default_rng(1925347)
 # create array to represent the system
 # -1 to represent spin down, 1 to represent spin-up
-def initialise_system(dim, size, rng):
+def initialise_system(dim, edge_length, rng):
     """Create a 'hypercube' of spins of dimension `dim`
-    and of edge length `size` and return it as a `numpy.ndarray`
+    and of edge length `edge_length` and return it as a `numpy.ndarray`
     of dtype `np.int_`. It uses the provided
     `numpy.random.Generator` object `rng` to generate the
     system. The system will be randomised to be of roughly
     equal spin-up (1) and spin-down (-1).
     """
-    shape = np.full(dim, size, dtype=np.int_)
+    shape = np.full(dim, edge_length, dtype=np.int_)
     return rng.choice([-1, 1], size=shape)
     # return np.full(shape, 1)
 
@@ -149,7 +149,7 @@ def metropolis(system, temperature, rng):
         # n_loops+=1
         # if Delta_E = 0 then loop agai
 
-def metropolis_checkall(system, temperature, rng, level_of_patience=3):
+def metropolis_checkall(system, temperature, rng, level_of_patience=2):
     """Perform one iteration of a modified Metropolis Algorithm.
     
 
@@ -200,15 +200,14 @@ def metropolis_checkall(system, temperature, rng, level_of_patience=3):
     system_shape = system.shape
     index_array = np.array([i for i in np.ndindex(system_shape)])
     rng.shuffle(index_array)
-    # this allows knowing that the whole system has been checked
-    # and that no points are checked twice
+
+    # for looping through the whole grid randomly
+    # allows knowing that the whole system has been checked
     isupindex_not_saved = True
-    for i in range(3):
+    for i in range(level_of_patience):
         for index in index_array:
             Delta_E = check_energy(system, index)
             prob_accept =  np.exp(2*Delta_E/temperature)
-            # if Delta_E < 0 and isupindex_not_saved:
-            #     print("first up: ", index)
             
             if Delta_E > 0 \
                 or (Delta_E < 0 and rng.random() <= prob_accept):
@@ -216,16 +215,16 @@ def metropolis_checkall(system, temperature, rng, level_of_patience=3):
                 system[*index] *= -1
                 # change_in_spin = system[*index] * 2 
                 return Delta_E, system[*index] * 2
-            elif isupindex_not_saved and Delta_E <= 0:  # save index of last one that would go up
-                # print(isupindex_not_saved)
-                # print(Delta_E)
+            elif isupindex_not_saved and Delta_E <= 0:
+                # save index of first one that would go up
+                # or stay the same
                 upindex = index.copy()
-                # print(upindex)
                 isupindex_not_saved = False
-    # print(tuple(index) == tuple(upindex))
     # if nothing happened, system is stuck in local minimum.
-    # The only thing that can be done is flip an a state up
-    # such that it increases in energy (or does not change it)
+    # The only thing that can be done is flip a state up
+    # such that it increases in energy or does not change it
+    # to try and get a configuration which can decrease
+    # further in energy
         
     # flip the first one that would increase energy
     # (or keep it the same)
