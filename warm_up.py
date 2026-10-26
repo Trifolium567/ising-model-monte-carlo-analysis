@@ -42,6 +42,7 @@ breakpoints = pl.Series([start_edge]).append(breakpoints)
 # plot the data (histogram)
 print(bins_n)
 plt.stairs(counts, breakpoints, fill=True)
+plt.title("Histogram made using numpy.histogram")
 plt.axvline(np.pi, color="red", label="$\\pi$")
 plt.legend()
 plt.show()
@@ -57,6 +58,7 @@ counts_cdf = frequencies.cum_sum()
 edges_cdf = pl.Series(values)  # copy the Series
 edges_cdf.append(pl.Series([edges_cdf[-1]]))
 plt.stairs(counts_cdf, edges_cdf, fill=False)
+plt.title("Cumulative Sum of Occurances of Estimates")
 plt.show()
 # %%
 # turn cumulative sum into cdf and 'differentiate'
@@ -69,16 +71,15 @@ pdf_y = dy/dx
 pdf_x = (values[1:] + values[:-1])/2
 
 plt.scatter(pdf_x, pdf_y, marker=".")
+plt.title("'Derivative' of the normalised\nCumulative Sum of Occurances of Estimates")
 plt.show()
 
- # %%
-# np.savetxt("placeholder.txt", pi_estimates)
 # %%
 plt.scatter(values, frequencies, marker=".")
 plt.show()
 # %%
 # Explanation:
-# After talking to a supervisor (Rich Mason), found that this isn't really 'differentiation'.
+# After talking to a supervisor, found that this isn't really 'differentiation'.
 # It is essentially instead of creating equal width bins, (which was causing artefacts)
 # creating bins of unequal size tailored to where the data points actually appear.
 # this avoids the binning artefacts.
@@ -88,24 +89,23 @@ plt.show()
 def normaldist(x, variance, mu):  # defining function to optimise for Polars Series (not numpy arrays)
     return 1 / np.sqrt(2*np.pi*variance) * ( -(x-mu).pow(2)/(2*variance) ).exp()
 
-pdf_y[0]
-
 popt, pcov = sp.optimize.curve_fit(normaldist, pdf_x, pdf_y, p0=[0.025, np.pi])
-
 sigma_squared_pdf, mean_pdf = popt
-plt.title("'Derivative' of Cumulative Distribution Function \n fit to normal distribution function")
-plt.xlabel("estimate of $\\mathrm{\\pi}$")
-plt.ylabel("probability density")
-plt.scatter(pdf_x, pdf_y, marker=".", color="red", label="data")
-plt.plot(pdf_x, normaldist(pdf_x, sigma_squared_pdf, mean_pdf), label="fit")
-plt.legend()
-plt.show()
-
 print("------------- fit to pdf -------------")
 print(f"variance = {sigma_squared_pdf}")
 sigma_pdf = np.sqrt(sigma_squared_pdf)
 print(f"standard deviation = {sigma_pdf}")
 print(f"mean = {mean_pdf}")
+
+plt.title("'Derivative' of Cumulative Distribution Function \n fit to normal distribution function")
+plt.xlabel("estimate of $\\mathrm{\\pi}$")
+plt.ylabel("probability density")
+plt.plot(pdf_x, normaldist(pdf_x, sigma_squared_pdf, mean_pdf), label=f"fit, variance = {sigma_squared_pdf:.5},\nmean={mean_pdf:.5}", color="red")
+plt.axvline(np.pi, label=r"$\pi$", color="green")
+plt.scatter(pdf_x, pdf_y, marker=".", label="data")
+plt.legend()
+plt.show()
+
 
 # %%
 # fit a normal cdf to the cumulative distribution function
@@ -129,8 +129,9 @@ print(f"mean = {mean_cdf}")
 plt.title("Cumulative Distribution Function \n fit to normal cumulative distribution function")
 plt.xlabel("estimate of $\\mathrm{\\pi}$")
 plt.ylabel("cumulative probability density")
-plt.scatter(cdf_x, cdf_y, marker=".", color="red", label="data")
-plt.plot(cdf_x, sp.stats.norm.cdf((cdf_x - mean_cdf)/sigma_cdf), label="fit")
+plt.axvline(np.pi, label=r"$\pi$", color="green")
+plt.scatter(cdf_x, cdf_y, marker=".",label="data")
+plt.plot(cdf_x, sp.stats.norm.cdf((cdf_x - mean_cdf)/sigma_cdf), label=f"fit, variance = {sigma_squared_cdf:.5},\nmean={mean_cdf:.5}", color="red")
 plt.legend()
 plt.show()
 
