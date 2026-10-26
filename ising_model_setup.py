@@ -1,25 +1,30 @@
 import numpy as np
 
-
 # rng = np.random.default_rng(1925347)
 # create array to represent the system
 # -1 to represent spin down, 1 to represent spin-up
-def initialise_system(dim, edge_length, rng):
+
+# Initialising and checking the state of the system
+def pbc(i, shape):
+    """Returns the index, `i`, modulo the shape of the system, `shape`.
+    This applies periodic boundary conditions."""
+    return np.mod(i, shape)
+
+def initialise_system(dim, edge_length, rng, ground_state=False):
     """Create a 'hypercube' of spins of dimension `dim`
     and of edge length `edge_length` and return it as a `numpy.ndarray`
     of dtype `np.int_`. It uses the provided
     `numpy.random.Generator` object `rng` to generate the
     system. The system will be randomised to be of roughly
     equal spin-up (1) and spin-down (-1).
+    If `ground_state` is set to True, it returns a system full of
+    spin-down (-1) states.
     """
+    # TODO: implement non-square system
     shape = np.full(dim, edge_length, dtype=np.int_)
+    if ground_state: return np.full(shape, -1, dtype=np.int_)
     return rng.choice([-1, 1], size=shape)
     # return np.full(shape, 1)
-
-def pbc(i, shape):
-    """Returns the index, `i`, modulo the shape of the system, `shape`.
-    This applies periodic boundary conditions."""
-    return np.mod(i, shape)
 
 def calculate_energy(system):
     """Return the energy of an n-d `system`
@@ -52,12 +57,11 @@ def calculate_energy(system):
     """
     ndim = system.ndim
     energy = 0
-    if ndim == 1:
-        energy = np.dot(np.roll(system, 1), system)
-    else:
-        for i in range(ndim):
-            energy += np.tensordot(np.roll(system, 1, axis=i), system)
-    return energy * -1
+    
+    for i in range(ndim):
+        energy += np.tensordot(np.roll(system, 1, axis=i),  system, axes=ndim)
+    
+    return energy * -1  # multiplied by -1 since -J in Hamiltonian
 
 def check_energy(system, index):
     """Checks the energies that are influenced by the spin
@@ -77,10 +81,83 @@ def check_energy(system, index):
 
     # calculate the sum of the energies that the chosen particle will influence
     Delta_E *= system[*index]
-    Delta_E *= -1
+    Delta_E *= -1  # because it's -J in the Hamiltonian
     return Delta_E
 
+def correlation_function(system):
+    """Find the correlation function, G(r), of the `system`, which is an
+    n-d `numpy.ndarray`, and return the result as two `numpy.ndarrays`
+    in this format:
+    ```
+        [r values],
+        [G(r) values]
+    ```
+    """
+    shape = np.array(system.shape)
+    ndim = system.ndim
+    size = np.prod(shape)
 
+    # the code below finds vectors that are in the top left
+    # 'hypercube' section, including the halfway row.
+    # e.g. for a 10 by 10 system (with the top left quadrant being the 'hypercube' section in 2d)
+    # [[1 1 1 1 1 1 0 0 0 0]
+    #  [1 1 1 1 1 1 0 0 0 0]
+    #  [1 1 1 1 1 1 0 0 0 0]
+    #  [1 1 1 1 1 1 0 0 0 0]
+    #  [1 1 1 1 1 1 0 0 0 0]
+    #  [1 1 1 1 1 1 0 0 0 0]
+    #  [0 0 0 0 0 0 0 0 0 0]
+    #  [0 0 0 0 0 0 0 0 0 0]
+    #  [0 0 0 0 0 0 0 0 0 0]
+    #  [0 0 0 0 0 0 0 0 0 0]]
+    # the 1's above represent the vectors chosen, with the index
+    # of each 1 being the vector.
+    # then it translates the system by these vectors and finds
+    # the correlation for each spin to the corresponding spin
+    # in the translated system and records their mean along with the radius
+    # of the vector
+    # This method is highly vectorised and should run fast
+    translation_array = np.array([i for i in np.ndindex(*shape)])
+    translation_array = translation_array[np.count_nonzero(((translation_array / (shape/2)) <= 1) == False, axis=1) == 0]
+    translation_array = translation_array[1:]  # remove zero vector
+    # translation_array = translation_array[np.sum((translation_array / (shape/2))**2, axis=1) <= 1]
+    # _ = np.full(ndim, 1)
+    # for i in range(ndim):
+    #     _[i] = -1
+    #     translation_array = np.append(translation_array, translation_array * _, axis=0)
+    #     _[i] = 1
+
+    G_function_raw = []
+    for vector in translation_array:
+        translated_system = system.copy()
+        for i in range(ndim):  # this for loop shifts the system
+            translated_system = np.roll(translated_system, shift=vector[i], axis=i)
+        # calculate r, G(r) and then record them
+        r = np.sqrt(np.sum(vector ** 2))
+        G = np.tensordot(translated_system, system, axes=ndim) / size
+        # If any combinations appear multiple times, it does not
+        # affect the result as the mean is taken and they are condensed
+        # into one data point in the calculation directly above.
+        G_function_raw.append((r, G))
+
+    # find unique r's and take the mean of their corresponding
+    # G-values
+    G_function_raw = np.array(G_function_raw)
+    r_values_raw, G_values_raw = G_function_raw.T
+
+    r_values = np.unique(r_values_raw)
+    r_values.sort()
+    # the r_values are sorted to make the result comparable to other results.
+    G_values = []
+    for r in r_values:
+        _ = np.mean(G_values_raw[r_values_raw == r])
+        G_values.append(_)        
+
+    return np.array(r_values), np.array(G_values)
+
+
+
+# Algorithms to compute the system
 def metropolis(system, temperature, rng):
     """Perform one iteration of the Metropolis Algorithm.
     
@@ -129,8 +206,6 @@ def metropolis(system, temperature, rng):
     """
     # generalise for an n-d system
     system_shape = system.shape
-
-    # n_loops=1
     while True:
         index = rng.integers(system_shape, dtype=np.int_)
 
@@ -146,8 +221,7 @@ def metropolis(system, temperature, rng):
             system[*index] *= -1
             # change_in_spin = system[*index] * 2 
             return Delta_E, system[*index] * 2
-        # n_loops+=1
-        # if Delta_E = 0 then loop agai
+        # if Delta_E = 0 then loop again
 
 def metropolis_checkall(system, temperature, rng, level_of_patience=2):
     """Perform one iteration of a modified Metropolis Algorithm.
