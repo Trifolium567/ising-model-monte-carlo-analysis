@@ -10,21 +10,20 @@ def pbc(i, shape):
     This applies periodic boundary conditions."""
     return np.mod(i, shape)
 
-def initialise_system(dim, edge_length, rng, ground_state=False):
+def initialise_ising(dim, edge_length, rng, ground_state=False):
     """Create a 'hypercube' of spins of dimension `dim`
     and of edge length `edge_length` and return it as a `numpy.ndarray`
     of dtype `np.int_`. It uses the provided
     `numpy.random.Generator` object `rng` to generate the
     system. The system will be randomised to be of roughly
-    equal spin-up (1) and spin-down (-1).
+    equal spin-up (`1`) and spin-down (`-1`).
     If `ground_state` is set to True, it returns a system full of
-    spin-down (-1) states.
+    spin-down (`-1`) states.
     """
-    # TODO: implement non-square system
+    # TODO: generalise this function
     shape = np.full(dim, edge_length, dtype=np.int_)
     if ground_state: return np.full(shape, -1, dtype=np.int_)
     return rng.choice([-1, 1], size=shape)
-    # return np.full(shape, 1)
 
 def calculate_energy(system):
     """Return the energy of an n-d `system`
@@ -53,7 +52,6 @@ def calculate_energy(system):
     energy : int
         The energy of the system as a multiple of J, the
         bond strength
-
     """
     ndim = system.ndim
     energy = 0
@@ -66,7 +64,8 @@ def calculate_energy(system):
 def check_energy(system, index):
     """Checks the energies that are influenced by the spin
     state that is at `index` in `system` using the Ising Model
-    Hamiltonian. `index` must be a `numpy.ndarray` object"""
+    Hamiltonian. `index` must be a `numpy.ndarray` object
+    """
     ndim = system.ndim
     system_shape = system.shape
     Delta_E = 0  # This variable will not be used as Delta_E first,
@@ -85,22 +84,42 @@ def check_energy(system, index):
     return Delta_E
 
 def correlation_function(system):
-    """Find the correlation function, G(r), of the `system`, which is an
-    n-d `numpy.ndarray`, and return the result as two `numpy.ndarrays`
-    in this format:
-    ```
-        [r values],
-        [G(r) values]
-    ```
+    """Find the spatial correlation function, G(r), of the `system`
+
+    This method finds the correlation function of the system by
+    finding the vectors that would translate each index of the
+    system to each other, in such a way that would attempt to only
+    create unique combinations, factoring in periodic boundary conditions.
+    It then uses `numpy.roll` to translate the system and `numpy.tensordot`
+    to compute the Correlation function, <s_i, s_j> for each
+    translation vector. Duplicate combinations, e.g. (s_i, s_j) and (s_j, s_i)
+    are made when the `system` has even length in any dimension, but these
+    should have no effect on the result since the mean is taken at a specific
+    point in the function to avoid this.
+    
+    This method of calculating the correlation_function makes use of `numpy`
+    arrays and methods and therefore should be well vectorised. This should
+    make it run faster.
+
+    Parameters
+    ----------
+
+    system : numpy.ndarray
+        The system of spins, in a `numpy.ndarray` with `-1` representing
+        spin-down and `1` representing spin-up
+    
+    Returns
+    -------
+    `[r values], [G(r) values]` in `numpy.ndarray` objects
     """
     shape = np.array(system.shape)
     ndim = system.ndim
     size = np.prod(shape)
 
     # the code below finds vectors that are in the top left
-    # 'hypercube' section, including the halfway row.
+    # 'hypercuboid' section, including the halfway row.
     # e.g. for a 10 by 10 system (with the top left quadrant being the 'hypercube' section in 2d)
-    # [[1 1 1 1 1 1 0 0 0 0]
+    # [[0 1 1 1 1 1 0 0 0 0]
     #  [1 1 1 1 1 1 0 0 0 0]
     #  [1 1 1 1 1 1 0 0 0 0]
     #  [1 1 1 1 1 1 0 0 0 0]
@@ -116,16 +135,9 @@ def correlation_function(system):
     # the correlation for each spin to the corresponding spin
     # in the translated system and records their mean along with the radius
     # of the vector
-    # This method is highly vectorised and should run fast
     translation_array = np.array([i for i in np.ndindex(*shape)])
     translation_array = translation_array[np.count_nonzero(((translation_array / (shape/2)) <= 1) == False, axis=1) == 0]
     translation_array = translation_array[1:]  # remove zero vector
-    # translation_array = translation_array[np.sum((translation_array / (shape/2))**2, axis=1) <= 1]
-    # _ = np.full(ndim, 1)
-    # for i in range(ndim):
-    #     _[i] = -1
-    #     translation_array = np.append(translation_array, translation_array * _, axis=0)
-    #     _[i] = 1
 
     G_function_raw = []
     for vector in translation_array:
@@ -135,9 +147,10 @@ def correlation_function(system):
         # calculate r, G(r) and then record them
         r = np.sqrt(np.sum(vector ** 2))
         G = np.tensordot(translated_system, system, axes=ndim) / size
-        # If any combinations appear multiple times, it does not
-        # affect the result as the mean is taken and they are condensed
-        # into one data point in the calculation directly above.
+        # When combinations appear multiple times, they appear at this stage,
+        # and they should have the same number of combinations for each
+        # spin-spin pair. Therefore, if the mean is taken now, this
+        # removes this effect.
         G_function_raw.append((r, G))
 
     # find unique r's and take the mean of their corresponding
@@ -156,8 +169,7 @@ def correlation_function(system):
     return np.array(r_values), np.array(G_values)
 
 
-
-# Algorithms to compute the system
+# Algorithms to perform on the system
 def metropolis(system, temperature, rng):
     """Perform one iteration of the Metropolis Algorithm.
     
@@ -227,14 +239,14 @@ def metropolis_checkall(system, temperature, rng, level_of_patience=2):
     """Perform one iteration of a modified Metropolis Algorithm.
     
 
-    This algorithm is designed to increase the acceptance rate of
-    the Metropolis algorithm by getting forcing acceptance past a
-    point. Instead of choosing a random index via the normal
-    distribution, it shuffles an array containing the indexes of
-    all the values in the system and iterates through that
-    `level_of_patience` times before then forcing an alteration,
-    including one that doesn't change the energy. This way, it
-    gets to equilibrium faster.
+    This algorithm is designed to increase the acceptance rate
+    and convergence of the Metropolis algorithm by forcing
+    acceptance past a point. Instead of choosing a random index
+    via the normal distribution, it shuffles an array containing
+    the indexes of all the values in the system and iterates through
+    the array `level_of_patience` times before then forcing an alteration,
+    accepting ones the first possible alteration that either doesn't
+    change the energy or increases the energy.
 
     This function will:
         -   flip one 'spin' in `system` in place
@@ -275,8 +287,8 @@ def metropolis_checkall(system, temperature, rng, level_of_patience=2):
     index_array = np.array([i for i in np.ndindex(system_shape)])
     rng.shuffle(index_array)
 
-    # for looping through the whole grid randomly
-    # allows knowing that the whole system has been checked
+    # for looping through the whole grid randomly allows knowing
+    # that the whole system has been checked
     isupindex_not_saved = True
     for i in range(level_of_patience):
         for index in index_array:

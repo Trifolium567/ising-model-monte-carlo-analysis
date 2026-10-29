@@ -10,7 +10,7 @@ rng = np.random.default_rng(1925347)
 # %%
 def compute_n_times(system, temperature, rng,
                     algorithm, n, step=None,
-                    correlation_function=False):
+                    get_correlation=False):
     """Compute an `algorithm` over a `system` at a `temperature` `n` times.
     
     Computes the algorithm that is passed to the function over a system.
@@ -44,13 +44,17 @@ def compute_n_times(system, temperature, rng,
         The temperature that the system is at, in terms of the bond strength, J
     rng : numpy.random.Generator
         The `numpy.random.Generator` object that will be passed to the algorithm.
-    step :
-            TODO: COMPLETE THIS
-    correlation_function: 
-            TODO: COMPLETE THIS
+    step : int
+        if an integer is passed to this parameter, the function will compute the
+        `algorithm` `step` times before recording data
+    get_correlation : bool
+        If this is set to `True`, then the function will find the spatial
+        correlation function
+    
     Returns
     -------
-    return E_array, M_array where:
+    E_array, M_array
+    where:
     If nothing passed to `step`:
         `E_array` and `M_array` are `numpy.ndarray` objects containing the
         starting energy and magnetism values and the values after each iteration.
@@ -60,10 +64,17 @@ def compute_n_times(system, temperature, rng,
         energy and magnetism values with each data point being collected after
         `step` iterations.
         `len(compute_n_times(..., n, step)) = n`
+
+    If `get_correlation` is set to `True`, return:
+        `E_array`, `M_array`, `r_values` and `G_values`
+        Where `E_array` and `M_array` are as described above and `r_array` is a
+        `numpy.ndarray` array of the distances and `G_values` is a `numpy.ndarray`
+        of the the values of the correlation function that correspond to those
+        distances.
     """
     E = ising_model_setup.calculate_energy(system)
     M = np.sum(system)
-    if correlation_function:
+    if get_correlation:
         r_values, G_values = ising_model_setup.correlation_function(system)
         G_values_list = [G_values]
     
@@ -78,10 +89,10 @@ def compute_n_times(system, temperature, rng,
             if i % step == 0:
                 E_list.append(E)
                 M_list.append(M)
-                if correlation_function:
+                if get_correlation:
                     _, G_values = ising_model_setup.correlation_function(system)
                     G_values_list.append(G_values)
-        if correlation_function:
+        if get_correlation:
             G_values_list = np.array(G_values_list)
             G_values = np.mean(G_values_list, axis=0)
             if np.count_nonzero(G_values > 1):
@@ -100,10 +111,10 @@ def compute_n_times(system, temperature, rng,
         M += Delta_M
         E_list.append(E)
         M_list.append(M)
-        if correlation_function:
+        if get_correlation:
             _, new_G_values = ising_model_setup.correlation_function(system)
             G_values = G_values + new_G_values
-    if correlation_function:
+    if get_correlation:
         G_values /= n
         if np.count_nonzero(G_values > 1):
             print(G_values)
@@ -116,12 +127,12 @@ edge_length = 100  # the grid of spins will be a 'hypercube' of side length `siz
 dimension = 1
 size = edge_length ** dimension
 # initialise 1-d system:
-store_initial = ising_model_setup.initialise_system(dimension, edge_length, rng)
+store_initial = ising_model_setup.initialise_ising(dimension, edge_length, rng)
 
-# compute Metropolis algorithm at T = 1J and see the change in energy over time
-iteration_number = size * 10
 
 # %%
+# compute Metropolis algorithm at T = 1J and see the change in energy over time
+iteration_number = size * 10
 # use metropolis function
 system_1d = store_initial.copy()
 E_array, M_array = compute_n_times(system_1d, 1, rng,
@@ -169,12 +180,12 @@ ax.set_ylabel("Sum of spins")
 plt.show()
 
 # %%
-# compute over T=0.01 J to T = 4 to see how it changes over time
+# compute over T = 0.01 J to T = 4 J to see how it changes over temperature
 num_T = 100  # the resolution over which to step over T
 upper_T = 4
 lower_T = 0.01
 
-system_1d = ising_model_setup.initialise_system(dimension, edge_length, rng,
+system_1d = ising_model_setup.initialise_ising(dimension, edge_length, rng,
                                                 ground_state=True)
 T_array = np.linspace(lower_T, upper_T, num_T)
 # go from 0.01 from a ground state to make sure that the ground state
@@ -224,6 +235,9 @@ T_array_tmat = np.linspace(upper_T, lower_T, 10000)
 #     tmat = np.matrix([[np.exp(np.reciprocal(T)), np.exp(-np.reciprocal(T))],
 #                       [np.exp(-np.reciprocal(T)), np.exp(np.reciprocal(T))]])
 #     Z_tmat.append((tmat ** size).trace()[0,0])
+# Z_tmat = np.array(Z_tmat)
+# e_tmat = - np.diff(np.log(Z_tmat)) / np.diff(Beta_array_tmat) / size
+# c_V_tmat = np.diff(e_tmat) / np.diff(T_array_tmat)[1:]
 
 # The code above does not deal with large values very well.
 # Try to use natural logarithms to multiply more accurately
@@ -241,12 +255,7 @@ for T in T_array_tmat:
         end_mat = np.log(end_mat)
     Z_log_tmat.append(np.trace(np.exp(end_mat)))
 
-
 Beta_array_tmat = np.reciprocal(T_array_tmat)
-
-# Z_tmat = np.array(Z_tmat)
-# e_tmat = - np.diff(np.log(Z_tmat)) / np.diff(Beta_array_tmat) / size
-# c_V_tmat = np.diff(e_tmat) / np.diff(T_array_tmat)[1:]
 
 Z_log_tmat = np.array(Z_log_tmat)
 e_log_tmat = - np.diff(np.log(Z_log_tmat)) / np.diff(Beta_array_tmat) / size
@@ -261,13 +270,13 @@ plt.scatter(T_array, e_over_T, marker=".", label="Monte Carlo")
 plt.plot(T_array_tmat, e_analytical, color="green", label="Analytical Transfer Matrix Solution")
 plt.plot(T_array_tmat[1:], e_log_tmat, color="red", label="Numerical Transfer Matrix Solution")
 plt.title("Internal Energy per Spin over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^{-1}$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel("Internal Energy per Spin / J")
 plt.legend()
 plt.show()
 plt.scatter(T_array, magnetisation_over_T, marker=".", label="Monte Carlo")
 plt.title("|M| over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^{-1}$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel("|Sum over the system| / size")
 plt.legend()
 plt.show()
@@ -275,7 +284,7 @@ plt.scatter(T_array, c_V_over_T, marker=".", label="Monte Carlo")
 plt.plot(T_array_tmat, c_V_analytical, color="green", label="Analytical Transfer Matrix Solution")
 plt.plot(T_array_tmat[2:], c_V_log_tmat, color="red", label="Numerical Transfer Matrix Solution")
 plt.title("Heat Capacity over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^{-1}$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel(r"Heat Capacity / $k_B$")
 plt.legend()
 plt.show()
@@ -285,12 +294,12 @@ plt.show()
 edge_length = 10  # the grid of spins will be a 'hypercube' of side length `size`
 dimension = 2
 size = edge_length ** dimension
-# initialise 1-d system:
-system_2d = ising_model_setup.initialise_system(dimension, edge_length, rng)
+# initialise 2-d system:
+system_2d = ising_model_setup.initialise_ising(dimension, edge_length, rng)
 E = ising_model_setup.calculate_energy(system_2d)
 M = np.sum(system_2d)
 
-# compute over T=0.01 J to T = 4 to see how it changes over time
+# compute over T = 0.01 J to T = 4 J to see how it changes over temperature
 num_T = 100  # the resolution over which to step over T
 
 T_array = np.linspace(4,0.01, num_T)
@@ -314,7 +323,7 @@ for T in T_array:
     E_array, M_array, r_array, G_values = compute_n_times(
         system_2d, T, rng,
         ising_model_setup.metropolis_checkall,
-        points, size, correlation_function=True
+        points, size, get_correlation=True
     )
     
     # Calculate the values that I need:
@@ -323,7 +332,6 @@ for T in T_array:
     c_V  = E_var / (size * T**2)  # specific heat capacity
     M = np.mean(np.abs(M_array))
 
-    # plt.show()
     e_over_T_2d.append(E_bar)
     M_over_T_2d.append(M)
     c_V_over_T_2d.append(c_V)
@@ -331,7 +339,6 @@ for T in T_array:
     
     print(T)
 # %%
-# T_array = T_array[:60]
 e_over_T_2d = np.array(e_over_T_2d) / size
 M_over_T_2d = np.array(M_over_T_2d) / size
 c_V_over_T_2d = np.array(c_V_over_T_2d)
@@ -339,31 +346,29 @@ G_values_over_T_2d = np.array(G_values_over_T_2d)
 
 plt.plot(T_array, e_over_T_2d)
 plt.title("Internal Energy per Spin over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^{-1}$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel("Internal Energy per Spin / J")
 plt.show()
 plt.plot(T_array, M_over_T_2d)
 plt.title("|M| over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^{-1}$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel("|Sum over the system| / size")
 plt.show()
 plt.plot(T_array, c_V_over_T_2d)
 plt.title("Heat Capacity over Temperature")
-plt.xlabel(r"Temperature / J ${k_B}^-1$")
+plt.xlabel(r"Temperature / J $\mathrm{k_B ^  {-1}}$")
 plt.ylabel(r"Heat Capacity / $k_B$")
 plt.show()
-
-print(G_values_over_T_2d)
 
 plt.pcolormesh(r_array, T_array, G_values_over_T_2d)
 plt.colorbar()
 plt.title("G(r, T)")
-plt.ylabel("Temperature, T / J $k_B ^{-1}$")
+plt.ylabel("Temperature, T / J $\\mathrm{k_B ^  {-1}}$")
 plt.xlabel("Distance, r")
 plt.show()
 
 plt.scatter(r_array, G_values_over_T_2d[T_array == 3.0327272727272727][0])
-plt.title("G(r, 3 J $k_B^{-1}$)")
+plt.title("G(r, 3 J $\\mathrm{k_B ^  {-1}}$)")
 plt.ylabel("Correlation")
 plt.xlabel("Distance, r")
 plt.show()
@@ -374,17 +379,16 @@ plt.show()
 # this does not hold near the critical temperature, so only
 # fit for the higher temperatures, 3-20
 # use scipy to fit the temperatures to an exponential function.
-# TODO: do another simulation with higher resolution at higher temperatures and use that.
 
 edge_length = 10  # the grid of spins will be a 'hypercube' of side length `size`
 dimension = 2
 size = edge_length ** dimension
-# initialise 1-d system:
-system_2d = ising_model_setup.initialise_system(dimension, edge_length, rng)
+# initialise 2-d system:
+system_2d = ising_model_setup.initialise_ising(dimension, edge_length, rng)
 E = ising_model_setup.calculate_energy(system_2d)
 M = np.sum(system_2d)
 
-# compute over T=0.01 J to T = 4 to see how it changes over time
+# compute over T = 3 J to T = 20 J to see how it changes over temperature
 num_T = 100  # the resolution over which to step over T
 
 T_array = np.linspace(20, 3, num_T)
@@ -408,7 +412,7 @@ for T in T_array:
     E_array, M_array, r_array, G_values = compute_n_times(
         system_2d, T, rng,
         ising_model_setup.metropolis_checkall,
-        points, size, correlation_function=True
+        points, size, get_correlation=True
     )
     
     # Calculate the values that I need:
@@ -417,7 +421,6 @@ for T in T_array:
     c_V  = E_var / (size * T**2)  # specific heat capacity
     M = np.mean(np.abs(M_array))
 
-    # plt.show()
     e_over_T_2d.append(E_bar)
     M_over_T_2d.append(M)
     c_V_over_T_2d.append(c_V)
@@ -427,32 +430,26 @@ for T in T_array:
 
 
 # %%
-
 e_over_T_2d = np.array(e_over_T_2d) / size
 M_over_T_2d = np.array(M_over_T_2d) / size
 c_V_over_T_2d = np.array(c_V_over_T_2d)
 G_values_over_T_2d = np.array(G_values_over_T_2d)
 
-
 fit_temperatures = T_array
-# fit_temperatures = fit_temperatures[fit_temperatures <= 3.8]
-def expected_correlation(r, l, a):
+def expected_correlation(r, l):
     return np.exp(- r / l)
 
 lengths = []
 for T in fit_temperatures:
     popt, pcov = sp.optimize.curve_fit(expected_correlation, r_array, G_values_over_T_2d[T_array == T][0])
     print(T, popt[0])
+    # code below is to make sure it is fitting properly (used when needed)
     # plt.scatter(r_array, G_values_over_T_2d[T_array==T][0])
     # plt.plot(r_array, expected_correlation(r_array, popt[0], popt[1]))
     # plt.show()
     lengths.append(popt[0])
 lengths = np.array(lengths)
-# plt.plot(r_array, expected_correlation(r_array, popt[0]))
 
-
-# plt.plot(r_array, G_values_over_T_2d[T_array == 4][0])
-# plt.show()
 # %%
 # fit lengths and temperatures to a power law
 def power_law(x, a, b):
@@ -461,15 +458,19 @@ def power_law(x, a, b):
 popt, pcov = sp.optimize.curve_fit(power_law, fit_temperatures, lengths, p0=[2.25, -0.8])
 x = np.linspace(3, 20, 1000)
 
+print(popt)
 plt.scatter(fit_temperatures, lengths, marker=".", label="data")
 plt.plot(x, power_law(x, popt[0], popt[1]), label=f"fit, T_c = {popt[0]}, \n$\\alpha$ = {popt[1]}", color="red")
 plt.title("Correlation Length over temperature fit to |T - T$_c$|$^\\alpha$")
+plt.xlabel("Temperature, T / J $\\mathrm{k_B ^{-1}}$")
+plt.ylabel("Correlation")
 plt.legend()
-print(popt)
 plt.show()
 plt.title("Correlation Length over temperature fit to |T - T$_c$|$^\\alpha$")
 plt.loglog(fit_temperatures, lengths, marker=".", linestyle="", label="data")
 plt.loglog(x, power_law(x, popt[0], popt[1]), label=f"fit, T_c = {popt[0]}, \n$\\alpha$ = {popt[1]}", color="red")
+plt.xlabel("Temperature, T / J $\\mathrm{k_B ^{-1}}$")
+plt.ylabel("Correlation")
 plt.legend()
 plt.show()
 # %%
